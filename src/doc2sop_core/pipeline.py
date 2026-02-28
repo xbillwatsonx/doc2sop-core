@@ -4,7 +4,7 @@ import json, os, re, subprocess
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-import prompts
+from . import prompts
 
 LANG_RULES_PATH = Path(__file__).parent / "language_rules.md"
 LANG_BLACKLIST_PATH = Path(__file__).parent / "language_blacklist.txt"
