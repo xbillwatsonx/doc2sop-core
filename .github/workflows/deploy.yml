@@ -1,0 +1,38 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Deploy to Vultr Server
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 207.246.117.224
+          username: root
+          key: ${{ secrets.DEPLOY_KEY }}
+          script: |
+            cd /opt/doc2sop-core
+            git pull origin master
+            pkill -f api_server || true
+            cd /opt/dynamic-sop
+            python3 api_server.py > /tmp/sop-server.log 2>&1 &
+            echo "Deployment complete"
+            sleep 2
+            ps aux | grep api_server | grep -v grep || echo "Server not running!"
+      
+      - name: Notify Discord
+        if: always()
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          title: "doc2sop-core Deploy"
+          description: "Deployed to production server"
+          color: 0x00ff00
+          username: "doc2sop-deploy"
