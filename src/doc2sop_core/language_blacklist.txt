@@ -1,0 +1,16 @@
+# Banned phrases for SOP output
+this document explains
+in conclusion
+as an ai
+as an AI language model
+I'd be happy to help
+great question
+let me explain
+it's important to note
+in today's world
+furthermore
+moreover
+therefore
+thus
+consequently
+additionally

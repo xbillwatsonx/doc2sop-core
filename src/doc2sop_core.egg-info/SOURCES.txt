@@ -1,0 +1,13 @@
+README.md
+pyproject.toml
+src/doc2sop_core/__init__.py
+src/doc2sop_core/language_blacklist.txt
+src/doc2sop_core/language_rules.md
+src/doc2sop_core/pipeline.py
+src/doc2sop_core/prompts.py
+src/doc2sop_core/server_wrapper.py
+src/doc2sop_core.egg-info/PKG-INFO
+src/doc2sop_core.egg-info/SOURCES.txt
+src/doc2sop_core.egg-info/dependency_links.txt
+src/doc2sop_core.egg-info/requires.txt
+src/doc2sop_core.egg-info/top_level.txt

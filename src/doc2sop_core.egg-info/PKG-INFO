@@ -1,0 +1,164 @@
+Metadata-Version: 2.4
+Name: doc2sop-core
+Version: 0.1.0
+Summary: Document to SOP pipeline - convert documents into standardized operating procedures
+Author-email: Bill Watson <alex-watson@agentmail.to>
+License: MIT
+Project-URL: Homepage, https://github.com/doc2sop/doc2sop-core
+Project-URL: Repository, https://github.com/doc2sop/doc2sop-core
+Keywords: sop,document-processing,pipeline,llm,ollama
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: pypdf>=3.0.0
+Requires-Dist: flask>=3.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: black>=23.0.0; extra == "dev"
+Requires-Dist: ruff>=0.1.0; extra == "dev"
+
+# doc2sop-core
+
+Document to SOP pipeline - convert documents into standardized operating procedures.
+
+## Overview
+
+doc2sop-core is a Python package that transforms raw documents (text, markdown, PDF, DOCX) into polished, professional Standard Operating Procedures (SOPs) using an 8-stage pipeline:
+
+1. **Normalize** - Extract text from various formats (txt, md, pdf, docx)
+2. **Structure** - Identify sections, steps, and flags/ambiguities
+3. **Draft** - Generate initial SOP in Markdown
+4. **Deslop** - Remove AI voice, humanize language
+5. **Acceptance** - Validate against quality checks
+6. **Human QC** - Placeholder for human review
+7. **Export** - Package the final output
+
+## Installation
+
+```bash
+# From source
+pip install -e .
+
+# Or install directly
+pip install /path/to/doc2sop-core
+```
+
+## Usage
+
+### As a Python Library
+
+```python
+from doc2sop_core import run_pipeline, stage2_normalize, mkpaths, ensure_dirs
+
+# Run full pipeline
+result = run_pipeline("/path/to/job_dir")
+print(f"Output: {result['output_dir']}")
+
+# Or use individual stages
+job_path = "/path/to/job_dir"
+paths = mkpaths(job_path)
+ensure_dirs(paths)
+stage2_normalize(paths)
+stage3_structure(paths)
+# ... continue with other stages
+```
+
+### As a Flask Server
+
+```python
+from doc2sop_core.server_wrapper import create_app, Doc2SOPServer
+
+# Using factory function
+app = create_app(jobs_dir="./jobs")
+app.run(port=5000)
+
+# Or using the class
+server = Doc2SOPServer(jobs_dir="./jobs")
+server.run(host="0.0.0.0", port=5000)
+```
+
+### Command Line
+
+```bash
+# Install and run
+pip install -e .
+doc2sop-core /path/to/job_dir
+```
+
+### REST API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/pipeline/run` | POST | Run pipeline on a job |
+| `/pipeline/status/<job_name>` | GET | Check job status |
+| `/jobs` | GET | List all jobs |
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DOC2SOP_USE_LLM` | `0` | Enable LLM stages (set to `1`) |
+| `DOC2SOP_MODEL_STRUCTURE` | `phi3:mini` | Model for structure stage |
+| `DOC2SOP_MODEL_DRAFT` | `qwen2.5-coder:3b` | Model for draft stage |
+| `DOC2SOP_MODEL_DESLOP` | `phi3:mini` | Model for deslop stage |
+| `OLLAMA_API` | `http://127.0.0.1:11434` | Ollama API endpoint |
+
+## Package Structure
+
+```
+doc2sop-core/
+├── pyproject.toml
+├── README.md
+├── src/
+│   └── doc2sop_core/
+│       ├── __init__.py          # Package exports
+│       ├── pipeline.py          # Core pipeline stages
+│       ├── prompts.py           # LLM prompt templates
+│       ├── server_wrapper.py    # Flask integration
+│       ├── language_rules.md    # Stage 5 behavior rules
+│       └── language_blacklist.txt  # Banned phrases
+└── tests/
+    └── __init__.py
+```
+
+## Importing
+
+The package can be imported as:
+
+```python
+# Import the main pipeline module
+from doc2sop_core import pipeline
+
+# Import specific functions
+from doc2sop_core import run_pipeline, stage2_normalize, mkpaths
+
+# Import prompts
+from doc2sop_core.prompts import SYSTEM_PROMPT, DOC2SOP_PROMPT
+
+# Import Flask server
+from doc2sop_core.server_wrapper import Doc2SOPServer, create_app
+```
+
+## Development
+
+```bash
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Run tests (when implemented)
+pytest
+
+# Format code
+black src/doc2sop_core
+ruff check src/doc2sop_core
+```
+
+## License
+
+MIT
