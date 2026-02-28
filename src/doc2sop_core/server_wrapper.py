@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-from . import pipeline
+import pipeline
 
 
 class Doc2SOPServer:
