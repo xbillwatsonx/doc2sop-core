@@ -109,8 +109,11 @@ def stage3_structure(p: Paths, model: str | None = None, use_llm: bool = False) 
     for ln in lines[:500]:
         low, loc = ln.lower(), ln[:120]
         issues = []
-        if "?" in ln: issues.append("Question/uncertainty in source; needs clarification.")
-        if any(w in low for w in ("depending", "might", "maybe")): issues.append("Conditional wording; clarify exact condition if needed.")
+        # Only flag ? if it's NOT at end of line (user's explicit question) and has ambiguity context
+        if "?" in ln and not ln.strip().endswith("?"):
+            issues.append("Question/uncertainty in source; needs clarification.")
+        if any(w in low for w in ("depending", "might", "maybe")) and not low.strip().endswith(("?", "maybe", "might")):
+            issues.append("Conditional wording; clarify exact condition if needed.")
         if issues:
             if loc not in seen_flags:
                 seen_flags[loc] = []
