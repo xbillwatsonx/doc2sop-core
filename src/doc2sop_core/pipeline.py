@@ -234,9 +234,11 @@ def _deterministic_draft(src: str) -> str:
         converted = step.rstrip("? ") + "."
         for pk, pv in policies.items():
             if pk in low: converted = pv; break
-        if any(k in low for k in ("maybe", "not always", "need system", "hard to remember", "inconsistent")):
-            if "or clipboard job traveler" in low: open_issues.append("Select one primary job-tracking system (whiteboard+photo log, clipboard traveler, or software).")
-            else: open_issues.append(step.rstrip(".? ") + ".")
+        if "or clipboard job traveler" in low:
+            open_issues.append("Select one primary job-tracking system (whiteboard+photo log, clipboard traveler, or software).")
+            continue
+        if "?" in step or any(k in low for k in ("maybe", "not always", "need system", "hard to remember", "inconsistent")):
+            open_issues.append(step.rstrip(".? ") + ".")
             continue
         phases[classify(step)].append(converted)
     step_num = 1
@@ -294,8 +296,25 @@ def meaning_drift_guard(draft_md: str, final_md: str) -> dict:
 
 def stage6_acceptance(p: Paths) -> dict:
     final_md, draft_md = (p.final / "deliverable.md").read_text(errors="ignore"), (p.draft / "deliverable.md").read_text(errors="ignore")
+    flags_count = 0
+    map_path = p.structure / "map.json"
+    if map_path.exists():
+        try:
+            data = json.loads(map_path.read_text(errors="ignore"))
+            if isinstance(data, dict):
+                flags = data.get("flags", [])
+                if isinstance(flags, list):
+                    flags_count = len(flags)
+        except Exception:
+            flags_count = 0
+    if flags_count == 0:
+        flags_md_path = p.structure / "flags.md"
+        if flags_md_path.exists():
+            lines = flags_md_path.read_text(errors="ignore").splitlines()
+            flags_count = sum(1 for line in lines if line.lstrip().startswith("- "))
+
     lower, procedure_steps = final_md.lower(), extract_procedure_steps(final_md)
-    checks = {"banned_phrases": [ph for ph in BANNED_PHRASES if ph in lower], "has_emoji": bool(EMOJI_RE.search(final_md)), "has_question_lines": any(QUESTION_RE.search(line) for line in final_md.splitlines()), "has_flags": "FLAG:" in final_md, "meaning_drift": meaning_drift_guard(draft_md, final_md), "procedure_step_count": len(procedure_steps), "shortest_step_words": min([count_words(s) for s in procedure_steps], default=0)}
+    checks = {"banned_phrases": [ph for ph in BANNED_PHRASES if ph in lower], "has_emoji": bool(EMOJI_RE.search(final_md)), "has_question_lines": any(QUESTION_RE.search(line) for line in final_md.splitlines()), "has_flags": flags_count > 0, "flag_count": flags_count, "meaning_drift": meaning_drift_guard(draft_md, final_md), "procedure_step_count": len(procedure_steps), "shortest_step_words": min([count_words(s) for s in procedure_steps], default=0)}
     ok = not checks["banned_phrases"] and not checks["has_emoji"] and not checks["has_question_lines"] and checks["meaning_drift"].get("ok") and checks["procedure_step_count"] >= 1
     report = {"ok": ok, "checks": checks, "ts": now()}
     (p.final / "acceptance.json").write_text(json.dumps(report, indent=2))
