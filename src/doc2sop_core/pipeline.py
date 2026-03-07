@@ -18,6 +18,65 @@ def load_blacklist() -> list[str]:
 BANNED_PHRASES = load_blacklist()
 EMOJI_RE = re.compile(r"[\U0001F300-\U0001FAFF]", re.UNICODE)
 QUESTION_RE = re.compile(r"\?\s*$")
+NEED_WORD_RE = re.compile(r"\bneed(s|ed)?\b", re.IGNORECASE)
+PURPOSE_SIGNAL_RE = re.compile(r"\b(ensure|protect|prevent|stabilize|improve|control|standardize|safeguard)\b", re.IGNORECASE)
+SCOPE_CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "intake": ("customer", "intake", "quote", "quoting", "budget", "spec", "specification", "photo", "text message", "rush", "pricing"),
+    "tracking": ("job tracking", "tracking", "whiteboard", "trello", "clipboard", "traveler", "schedule", "lead time", "kanban"),
+    "safety": ("safety", "fire extinguisher", "ppe", "gloves", "maintenance", "mig", "logbook", "inspection"),
+    "payment": ("payment", "deposit", "cash flow", "invoice", "billing"),
+}
+SCOPE_ROLE_KEYWORDS = ("shop", "team", "crew", "operator", "kitchen", "farm", "warehouse", "line", "department")
+PURPOSE_KEYWORDS = ("purpose", "objective", "mission", "goal")
+DECISION_NORMALIZERS = [
+    {"keywords": ("material markup", "markup 20", "markup percent"), "location": "Material markup policy", "issue": "Clarify the standard material markup percentage and exception approval path."},
+    {"keywords": ("trello", "clipboard", "job tracking", "job-tracking", "whiteboard", "traveler", "need system"), "location": "Job-tracking method", "issue": "Select and implement one primary job-tracking system (e.g., Trello board or clipboard traveler) with a photo-backed backup method."},
+    {"keywords": ("fire extinguisher", "check tag"), "location": "Fire extinguisher inspections", "issue": "Confirm fire extinguisher inspection cadence and logging (owner, timestamp, corrective action)."},
+    {"keywords": ("mig liner", "maintenance log", "logbook", "maintenance", "hard to remember"), "location": "Maintenance log", "issue": "Define and enforce a maintenance logging method (owner, cadence, required fields)."},
+    {"keywords": ("gloves", "glove"), "location": "Glove compliance", "issue": "Define glove-compliance enforcement (who checks, when checked, and how non-compliance is handled)."},
+    {"keywords": ("quoting inconsistent", "flat rate guess", "flat-rate", "hourly 85", "hourly $85", "quote method", "pricing"), "location": "Quote approval workflow", "issue": "Define quote approval workflow and policy enforcement (hourly vs flat-rate templates, markup consistency)."},
+]
+
+def normalized_decision_from_text(text: str) -> tuple[str | None, str | None]:
+    low = (text or "").lower()
+    for entry in DECISION_NORMALIZERS:
+        if any(keyword in low for keyword in entry["keywords"]):
+            return entry.get("location"), entry["issue"]
+    return None, None
+
+
+def detect_scope_categories(lower_src: str) -> set[str]:
+    found: set[str] = set()
+    for name, keywords in SCOPE_CATEGORY_KEYWORDS.items():
+        for keyword in keywords:
+            if keyword in lower_src:
+                found.add(name)
+                break
+    return found
+
+
+def has_scope_signals(lower_src: str) -> bool:
+    if any(word in lower_src for word in ("scope", "applies to", "applies-to", "covers", "responsible", "audience")):
+        return True
+    categories = detect_scope_categories(lower_src)
+    if len(categories) >= 2:
+        return True
+    if categories and any(role in lower_src for role in SCOPE_ROLE_KEYWORDS):
+        return True
+    return False
+
+
+def has_purpose_signals(lower_src: str) -> bool:
+    if any(keyword in lower_src for keyword in PURPOSE_KEYWORDS):
+        return True
+    need_hits = len(NEED_WORD_RE.findall(lower_src))
+    signal_hits = len(PURPOSE_SIGNAL_RE.findall(lower_src))
+    if need_hits + signal_hits >= 3:
+        return True
+    if ("cash flow" in lower_src or "safety" in lower_src or "quote" in lower_src) and (need_hits + signal_hits >= 1):
+        return True
+    return False
+
 
 def now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -117,11 +176,13 @@ def stage3_structure(p: Paths, model: str | None = None, use_llm: bool = False) 
                 flag_order.append(loc)
             for i in issues:
                 if i not in seen_flags[loc]: seen_flags[loc].append(i)
-    for loc in flag_order: flags.append({"location": loc, "issue": " ".join(seen_flags[loc])})
+    for loc in flag_order:
+        norm_loc, norm_issue = normalized_decision_from_text(loc)
+        flags.append({"location": norm_loc or loc, "issue": norm_issue or " ".join(seen_flags[loc])})
     lower_src = src.lower()
-    if not any(w in lower_src for w in ("purpose", "objective", "mission", "goal")):
+    if not has_purpose_signals(lower_src):
         flags.append({"location": "Purpose", "issue": "Source never states an explicit purpose/goal; confirm intent."})
-    if not any(w in lower_src for w in ("scope", "applies to", "covers", "responsible", "audience")):
+    if not has_scope_signals(lower_src):
         flags.append({"location": "Scope", "issue": "Scope/audience is unclear; clarify who and where this applies."})
     sections = data.get("sections") if isinstance(data.get("sections"), list) else [{"title": title, "type": "overview", "step_candidates": []}, {"title": "Sections / Clauses", "type": "reference", "step_candidates": step_candidates}]
     merged_flags = (data.get("flags") if isinstance(data.get("flags"), list) else []) + flags
@@ -251,7 +312,12 @@ def _deterministic_draft(src: str) -> str:
     md_lines += ["## Notes / Exceptions"] + ([f"- {n.rstrip(' ?')}." for n in notes] or ["- None."])
     if any(k in lower_body for k in ("quote", "rush", "deposit", "maintenance", "fire extinguisher")):
         md_lines += ["", "## Control Standards", "- Rush-job trigger: any requested completion under 5 business days.", "- Rush surcharge baseline: +25% labor surcharge unless owner-approved exception is documented.", "- Quote record retention: keep intake + quote records for at least 12 months in the designated job folder.", "- Safety/maintenance log minimum fields: date, asset/check, result, corrective action, initials.", "- Default ownership (until assigned): Shop Lead owns safety checks and maintenance log completeness."]
-    if open_issues: md_lines += ["", "## Required Decisions / Open Issues"] + [f"- {oi}" for oi in sorted(set(open_issues))]
+    if open_issues:
+        normalized_issues = []
+        for oi in open_issues:
+            _, normalized = normalized_decision_from_text(oi)
+            normalized_issues.append(normalized or oi)
+        md_lines += ["", "## Required Decisions / Open Issues"] + [f"- {oi}" for oi in sorted(set(normalized_issues))]
     if backlog: md_lines += ["", "## Future Improvements / Backlog"] + [f"- {b}" for b in backlog]
     return "\n".join(md_lines)
 
