@@ -37,12 +37,25 @@ DECISION_NORMALIZERS = [
     {"keywords": ("quoting inconsistent", "flat rate guess", "flat-rate", "hourly 85", "hourly $85", "quote method", "pricing"), "location": "Quote approval workflow", "issue": "Define quote approval workflow and policy enforcement (hourly vs flat-rate templates, markup consistency)."},
 ]
 
+
 def normalized_decision_from_text(text: str) -> tuple[str | None, str | None]:
     low = (text or "").lower()
     for entry in DECISION_NORMALIZERS:
         if any(keyword in low for keyword in entry["keywords"]):
             return entry.get("location"), entry["issue"]
     return None, None
+
+
+def ensure_keyword_flags(flags: list[dict], lower_src: str) -> None:
+    existing_locations = {fl.get("location") for fl in flags if fl.get("location")}
+    for entry in DECISION_NORMALIZERS:
+        location = entry.get("location")
+        if not location or location in existing_locations:
+            continue
+        keywords = tuple(keyword.lower() for keyword in entry.get("keywords", ()))
+        if any(keyword in lower_src for keyword in keywords):
+            flags.append({"location": location, "issue": entry.get("issue", "Clarify requirement.")})
+            existing_locations.add(location)
 
 
 def detect_scope_categories(lower_src: str) -> set[str]:
@@ -180,6 +193,7 @@ def stage3_structure(p: Paths, model: str | None = None, use_llm: bool = False) 
         norm_loc, norm_issue = normalized_decision_from_text(loc)
         flags.append({"location": norm_loc or loc, "issue": norm_issue or " ".join(seen_flags[loc])})
     lower_src = src.lower()
+    ensure_keyword_flags(flags, lower_src)
     if not has_purpose_signals(lower_src):
         flags.append({"location": "Purpose", "issue": "Source never states an explicit purpose/goal; confirm intent."})
     if not has_scope_signals(lower_src):
