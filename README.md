@@ -78,4 +78,4 @@ This repository is currently maintained by the core team. While we appreciate in
 
 ---
 
-**Questions?** Open an issue for bugs or feature requests. For business inquiries: [xbilwatsonx@gmail.com](mailto:xbilwatsonx@gmail.com)
+**Questions?** Open an issue for bugs or feature requests. For business inquiries: [xbillwatsonx@gmail.com](mailto:xbillwatsonx@gmail.com)
