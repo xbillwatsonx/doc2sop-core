@@ -18,6 +18,78 @@ def load_blacklist() -> list[str]:
 BANNED_PHRASES = load_blacklist()
 EMOJI_RE = re.compile(r"[\U0001F300-\U0001FAFF]", re.UNICODE)
 QUESTION_RE = re.compile(r"\?\s*$")
+NEED_WORD_RE = re.compile(r"\bneed(s|ed)?\b", re.IGNORECASE)
+PURPOSE_SIGNAL_RE = re.compile(r"\b(ensure|protect|prevent|stabilize|improve|control|standardize|safeguard)\b", re.IGNORECASE)
+SCOPE_CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "intake": ("customer", "intake", "quote", "quoting", "budget", "spec", "specification", "photo", "text message", "rush", "pricing"),
+    "tracking": ("job tracking", "tracking", "whiteboard", "trello", "clipboard", "traveler", "schedule", "lead time", "kanban"),
+    "safety": ("safety", "fire extinguisher", "ppe", "gloves", "maintenance", "mig", "logbook", "inspection"),
+    "payment": ("payment", "deposit", "cash flow", "invoice", "billing"),
+}
+SCOPE_ROLE_KEYWORDS = ("shop", "team", "crew", "operator", "kitchen", "farm", "warehouse", "line", "department")
+PURPOSE_KEYWORDS = ("purpose", "objective", "mission", "goal")
+DECISION_NORMALIZERS = [
+    {"keywords": ("material markup", "markup 20", "markup percent"), "location": "Material markup policy", "issue": "Clarify the standard material markup percentage and exception approval path."},
+    {"keywords": ("trello", "clipboard", "job tracking", "job-tracking", "whiteboard", "traveler", "need system"), "location": "Job-tracking method", "issue": "Select and implement one primary job-tracking system (e.g., Trello board or clipboard traveler) with a photo-backed backup method."},
+    {"keywords": ("fire extinguisher", "check tag"), "location": "Fire extinguisher inspections", "issue": "Confirm fire extinguisher inspection cadence and logging (owner, timestamp, corrective action)."},
+    {"keywords": ("mig liner", "maintenance log", "logbook", "maintenance", "hard to remember"), "location": "Maintenance log", "issue": "Define and enforce a maintenance logging method (owner, cadence, required fields)."},
+    {"keywords": ("gloves", "glove"), "location": "Glove compliance", "issue": "Define glove-compliance enforcement (who checks, when checked, and how non-compliance is handled)."},
+    {"keywords": ("quoting inconsistent", "flat rate guess", "flat-rate", "hourly 85", "hourly $85", "quote method", "pricing"), "location": "Quote approval workflow", "issue": "Define quote approval workflow and policy enforcement (hourly vs flat-rate templates, markup consistency)."},
+]
+
+
+def normalized_decision_from_text(text: str) -> tuple[str | None, str | None]:
+    low = (text or "").lower()
+    for entry in DECISION_NORMALIZERS:
+        if any(keyword in low for keyword in entry["keywords"]):
+            return entry.get("location"), entry["issue"]
+    return None, None
+
+
+def ensure_keyword_flags(flags: list[dict], lower_src: str) -> None:
+    existing_locations = {fl.get("location") for fl in flags if fl.get("location")}
+    for entry in DECISION_NORMALIZERS:
+        location = entry.get("location")
+        if not location or location in existing_locations:
+            continue
+        keywords = tuple(keyword.lower() for keyword in entry.get("keywords", ()))
+        if any(keyword in lower_src for keyword in keywords):
+            flags.append({"location": location, "issue": entry.get("issue", "Clarify requirement.")})
+            existing_locations.add(location)
+
+
+def detect_scope_categories(lower_src: str) -> set[str]:
+    found: set[str] = set()
+    for name, keywords in SCOPE_CATEGORY_KEYWORDS.items():
+        for keyword in keywords:
+            if keyword in lower_src:
+                found.add(name)
+                break
+    return found
+
+
+def has_scope_signals(lower_src: str) -> bool:
+    if any(word in lower_src for word in ("scope", "applies to", "applies-to", "covers", "responsible", "audience")):
+        return True
+    categories = detect_scope_categories(lower_src)
+    if len(categories) >= 2:
+        return True
+    if categories and any(role in lower_src for role in SCOPE_ROLE_KEYWORDS):
+        return True
+    return False
+
+
+def has_purpose_signals(lower_src: str) -> bool:
+    if any(keyword in lower_src for keyword in PURPOSE_KEYWORDS):
+        return True
+    need_hits = len(NEED_WORD_RE.findall(lower_src))
+    signal_hits = len(PURPOSE_SIGNAL_RE.findall(lower_src))
+    if need_hits + signal_hits >= 3:
+        return True
+    if ("cash flow" in lower_src or "safety" in lower_src or "quote" in lower_src) and (need_hits + signal_hits >= 1):
+        return True
+    return False
+
 
 def now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -117,11 +189,14 @@ def stage3_structure(p: Paths, model: str | None = None, use_llm: bool = False) 
                 flag_order.append(loc)
             for i in issues:
                 if i not in seen_flags[loc]: seen_flags[loc].append(i)
-    for loc in flag_order: flags.append({"location": loc, "issue": " ".join(seen_flags[loc])})
+    for loc in flag_order:
+        norm_loc, norm_issue = normalized_decision_from_text(loc)
+        flags.append({"location": norm_loc or loc, "issue": norm_issue or " ".join(seen_flags[loc])})
     lower_src = src.lower()
-    if not any(w in lower_src for w in ("purpose", "objective", "mission", "goal")):
+    ensure_keyword_flags(flags, lower_src)
+    if not has_purpose_signals(lower_src):
         flags.append({"location": "Purpose", "issue": "Source never states an explicit purpose/goal; confirm intent."})
-    if not any(w in lower_src for w in ("scope", "applies to", "covers", "responsible", "audience")):
+    if not has_scope_signals(lower_src):
         flags.append({"location": "Scope", "issue": "Scope/audience is unclear; clarify who and where this applies."})
     sections = data.get("sections") if isinstance(data.get("sections"), list) else [{"title": title, "type": "overview", "step_candidates": []}, {"title": "Sections / Clauses", "type": "reference", "step_candidates": step_candidates}]
     merged_flags = (data.get("flags") if isinstance(data.get("flags"), list) else []) + flags
@@ -234,9 +309,11 @@ def _deterministic_draft(src: str) -> str:
         converted = step.rstrip("? ") + "."
         for pk, pv in policies.items():
             if pk in low: converted = pv; break
-        if any(k in low for k in ("maybe", "not always", "need system", "hard to remember", "inconsistent")):
-            if "or clipboard job traveler" in low: open_issues.append("Select one primary job-tracking system (whiteboard+photo log, clipboard traveler, or software).")
-            else: open_issues.append(step.rstrip(".? ") + ".")
+        if "or clipboard job traveler" in low:
+            open_issues.append("Select one primary job-tracking system (whiteboard+photo log, clipboard traveler, or software).")
+            continue
+        if "?" in step or any(k in low for k in ("maybe", "not always", "need system", "hard to remember", "inconsistent")):
+            open_issues.append(step.rstrip(".? ") + ".")
             continue
         phases[classify(step)].append(converted)
     step_num = 1
@@ -249,7 +326,12 @@ def _deterministic_draft(src: str) -> str:
     md_lines += ["## Notes / Exceptions"] + ([f"- {n.rstrip(' ?')}." for n in notes] or ["- None."])
     if any(k in lower_body for k in ("quote", "rush", "deposit", "maintenance", "fire extinguisher")):
         md_lines += ["", "## Control Standards", "- Rush-job trigger: any requested completion under 5 business days.", "- Rush surcharge baseline: +25% labor surcharge unless owner-approved exception is documented.", "- Quote record retention: keep intake + quote records for at least 12 months in the designated job folder.", "- Safety/maintenance log minimum fields: date, asset/check, result, corrective action, initials.", "- Default ownership (until assigned): Shop Lead owns safety checks and maintenance log completeness."]
-    if open_issues: md_lines += ["", "## Required Decisions / Open Issues"] + [f"- {oi}" for oi in sorted(set(open_issues))]
+    if open_issues:
+        normalized_issues = []
+        for oi in open_issues:
+            _, normalized = normalized_decision_from_text(oi)
+            normalized_issues.append(normalized or oi)
+        md_lines += ["", "## Required Decisions / Open Issues"] + [f"- {oi}" for oi in sorted(set(normalized_issues))]
     if backlog: md_lines += ["", "## Future Improvements / Backlog"] + [f"- {b}" for b in backlog]
     return "\n".join(md_lines)
 
@@ -294,8 +376,25 @@ def meaning_drift_guard(draft_md: str, final_md: str) -> dict:
 
 def stage6_acceptance(p: Paths) -> dict:
     final_md, draft_md = (p.final / "deliverable.md").read_text(errors="ignore"), (p.draft / "deliverable.md").read_text(errors="ignore")
+    flags_count = 0
+    map_path = p.structure / "map.json"
+    if map_path.exists():
+        try:
+            data = json.loads(map_path.read_text(errors="ignore"))
+            if isinstance(data, dict):
+                flags = data.get("flags", [])
+                if isinstance(flags, list):
+                    flags_count = len(flags)
+        except Exception:
+            flags_count = 0
+    if flags_count == 0:
+        flags_md_path = p.structure / "flags.md"
+        if flags_md_path.exists():
+            lines = flags_md_path.read_text(errors="ignore").splitlines()
+            flags_count = sum(1 for line in lines if line.lstrip().startswith("- "))
+
     lower, procedure_steps = final_md.lower(), extract_procedure_steps(final_md)
-    checks = {"banned_phrases": [ph for ph in BANNED_PHRASES if ph in lower], "has_emoji": bool(EMOJI_RE.search(final_md)), "has_question_lines": any(QUESTION_RE.search(line) for line in final_md.splitlines()), "has_flags": "FLAG:" in final_md, "meaning_drift": meaning_drift_guard(draft_md, final_md), "procedure_step_count": len(procedure_steps), "shortest_step_words": min([count_words(s) for s in procedure_steps], default=0)}
+    checks = {"banned_phrases": [ph for ph in BANNED_PHRASES if ph in lower], "has_emoji": bool(EMOJI_RE.search(final_md)), "has_question_lines": any(QUESTION_RE.search(line) for line in final_md.splitlines()), "has_flags": flags_count > 0, "flag_count": flags_count, "meaning_drift": meaning_drift_guard(draft_md, final_md), "procedure_step_count": len(procedure_steps), "shortest_step_words": min([count_words(s) for s in procedure_steps], default=0)}
     ok = not checks["banned_phrases"] and not checks["has_emoji"] and not checks["has_question_lines"] and checks["meaning_drift"].get("ok") and checks["procedure_step_count"] >= 1
     report = {"ok": ok, "checks": checks, "ts": now()}
     (p.final / "acceptance.json").write_text(json.dumps(report, indent=2))
