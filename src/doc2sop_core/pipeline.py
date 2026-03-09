@@ -248,8 +248,30 @@ def _deterministic_draft(src: str) -> str:
         text = re.sub(r"^(purpose|scope)\s*:\s*", "", " ".join(items).strip(), flags=re.I)
         return (text[:277].rsplit(" ", 1)[0] + "..." if len(text) > 280 else text) or "As described in source."
     purpose_text, scope_text = collapse(purpose_sents), collapse(scope_sents)
-    if "brain dump" in purpose_text.lower() or purpose_text.lower().startswith("as described"):
-        purpose_text = "Ensure consistent intake, quoting accuracy, scheduling reliability, safety compliance, and cash-flow control."
+    harvest_context = any(
+        phrase in lower_body
+        for phrase in (
+            "cutting table",
+            "cut table",
+            "catch bin",
+            "harvest",
+            "true leaves",
+            "storage container",
+        )
+    )
+    packaging_context = any(term in lower_body for term in ("package", "packaging", "label", "labels", "lids"))
+    greenhouse_context = "greenhouse" in lower_body
+    if (
+        "brain dump" in purpose_text.lower()
+        or purpose_text.lower().startswith(("as described", "found in", "located in"))
+        or len(purpose_text.split()) <= 4
+    ):
+        if harvest_context:
+            purpose_text = "Guide the cutting-table harvest workflow for microgreens from staging trays through packaging."
+        elif packaging_context:
+            purpose_text = "Ensure harvested microgreens move from the cutting area into labeled, food-safe packaging without contamination."
+        else:
+            purpose_text = "Ensure consistent intake, quoting accuracy, scheduling reliability, safety compliance, and cash-flow control."
     if scope_text.lower().startswith("as described") or len(scope_text.strip()) < 40:
         parts = []
         if any(k in lower_body for k in ("customer inquiry", "intake", "quote", "budget")): parts.append("customer intake and quoting")
@@ -257,6 +279,13 @@ def _deterministic_draft(src: str) -> str:
         if any(k in lower_body for k in ("safety", "fire extinguisher", "maintenance")): parts.append("safety and equipment maintenance")
         if any(k in lower_body for k in ("payment", "deposit", "cash flow")): parts.append("payment terms and cash-flow controls")
         scope_text = f"Applies to {', '.join(parts)}, from first inquiry through payment and closeout." if parts else "Applies to this operational workflow."
+    if scope_text.lower().startswith(("found in", "located in")) or len(scope_text.split()) <= 6:
+        area_parts = []
+        if harvest_context: area_parts.append("the cutting-table harvest station")
+        if packaging_context: area_parts.append("packaging prep and labeling area")
+        if greenhouse_context: area_parts.append("greenhouse trays staged for cutting")
+        if not area_parts: area_parts.append("this microgreen harvest workflow")
+        scope_text = "Applies to " + ", ".join(area_parts) + "."
     md_lines = [f"# {title}", "", "## Purpose", purpose_text, "", "## Scope", scope_text, "", "## Procedure"]
     steps, first_steps, notes, pending = [], [], [], ""
     for i, s in enumerate(sentences):
@@ -287,6 +316,48 @@ def _deterministic_draft(src: str) -> str:
         for pat, rep in subs: s = re.sub(pat, rep, s, flags=re.I)
         return (s[0].upper() + s[1:]).strip() if s else ""
     final_steps = [humanize(s) for s in consolidated]
+    step_verb_hints = (
+        "stage",
+        "prepare",
+        "transfer",
+        "evaluate",
+        "mark",
+        "package",
+        "store",
+        "print",
+        "insert",
+        "label",
+        "rinse",
+        "wash",
+        "sanitize",
+        "inspect",
+        "check",
+        "load",
+        "unload",
+        "mix",
+        "cover",
+        "set",
+        "place",
+        "remove",
+        "harvest",
+        "cut",
+        "collect",
+        "gather",
+    )
+    def strip_trailing_enumeration(text: str) -> str:
+        return re.sub(r"\s+(?:[-–—]?\s*)?\(?\d+\)?\.?$", "", text).strip()
+    def is_fragmentary(text: str) -> bool:
+        words = text.split()
+        if len(words) <= 2 and not any(verb in text.lower() for verb in step_verb_hints):
+            return True
+        return False
+    cleaned_steps = []
+    for step in final_steps:
+        trimmed = strip_trailing_enumeration(step)
+        if not trimmed or is_fragmentary(trimmed):
+            continue
+        cleaned_steps.append(trimmed)
+    final_steps = cleaned_steps
     phases = {k: [] for k in ["Customer Intake & Quoting", "Job Tracking & Scheduling", "Safety & Maintenance", "Payment & Cash Flow", "Execution Steps"]}
     backlog, open_issues, seen = [], [], set()
     def classify(s: str) -> str:
