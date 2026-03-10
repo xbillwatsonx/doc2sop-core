@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic SOP</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-dark: #0a0a0a;
+            --bg-card: #141414;
+            --bg-hover: #1a1a1a;
+            --border: #2a2a2a;
+            --text-main: #e5e5e5;
+            --text-muted: #737373;
+            --accent: #10b981;
+            --accent-hover: #059669;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Subtle grid background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+                linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+            background-size: 50px 50px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 60px 20px;
+            position: relative;
+            z-index: 1;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        /* Title */
+        h1 {
+            text-align: center;
+            font-size: 2.5rem;
+            font-weight: 600;
+            margin-bottom: 40px;
+            letter-spacing: -0.02em;
+        }
+
+        /* Main Input Card */
+        .input-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        textarea {
+            width: 100%;
+            background: transparent;
+            border: none;
+            color: var(--text-main);
+            font-size: 1.1rem;
+            resize: none;
+            outline: none;
+            min-height: 60px;
+            font-family: inherit;
+        }
+
+        textarea::placeholder {
+            color: var(--text-muted);
+        }
+
+        .input-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+        }
+
+        .placeholder-hint {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .send-btn {
+            background: var(--accent);
+            color: #000;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .send-btn:hover {
+            background: var(--accent-hover);
+        }
+
+        /* Quick Prompts */
+        .quick-prompts {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .quick-prompt {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px 20px;
+            color: var(--text-main);
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.95rem;
+        }
+
+        .quick-prompt:hover {
+            background: var(--bg-hover);
+            border-color: var(--accent);
+            transform: translateX(4px);
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        footer p {
+            max-width: 500px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+
+        /* Animation */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .input-card, .quick-prompt {
+            animation: fadeIn 0.4s ease-out forwards;
+        }
+
+        .quick-prompt:nth-child(1) { animation-delay: 0.1s; }
+        .quick-prompt:nth-child(2) { animation-delay: 0.2s; }
+        .quick-prompt:nth-child(3) { animation-delay: 0.3s; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Dynamic SOP</h1>
+
+        <div class="input-card">
+            <div class="input-wrapper">
+                <textarea 
+                    id="userInput"
+                    placeholder="What would you like to do today?"
+                    rows="2"
+                ></textarea>
+            </div>
+            <div class="input-footer">
+                <span class="placeholder-hint">Try: Turn my notes into an SOP</span>
+                <button class="send-btn" onclick="handleSubmit()">Send</button>
+            </div>
+        </div>
+
+        <div class="quick-prompts">
+            <button class="quick-prompt" onclick="selectPrompt('Convert my process notes to an SOP')">
+                Convert my process notes to an SOP
+            </button>
+            <button class="quick-prompt" onclick="selectPrompt('Make my SOP more clear')">
+                Make my SOP more clear
+            </button>
+            <button class="quick-prompt" onclick="selectPrompt('Create a new SOP from scratch')">
+                Create a new SOP from scratch
+            </button>
+        </div>
+    </div>
+
+    <footer>
+        <p>Built for business operations teams who need clear, actionable standard operating procedures</p>
+        <p style="margin-top: 8px;">Dynamic SOP © 2026</p>
+    </footer>
+
+    <script>
+        function selectPrompt(text) {
+            sessionStorage.setItem('initialPrompt', text);
+            window.location.href = 'chat.html';
+        }
+
+        function handleSubmit() {
+            const input = document.getElementById('userInput').value.trim();
+            if (input) {
+                // Store the prompt in sessionStorage for the chat page
+                sessionStorage.setItem('initialPrompt', input);
+                // Go to chat page
+                window.location.href = 'chat.html';
+            }
+        }
+
+        // Allow Ctrl+Enter to submit
+        document.getElementById('userInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && e.ctrlKey) {
+                handleSubmit();
+            }
+        });
+    </script>
+</body>
+</html>
