@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic SOP - Chat</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-dark: #0a0a0a;
+            --bg-card: #141414;
+            --bg-hover: #1a1a1a;
+            --border: #2a2a2a;
+            --text-main: #e5e5e5;
+            --text-muted: #737373;
+            --accent: #10b981;
+            --accent-hover: #059669;
+            --user-msg: #1a1a1a;
+            --ai-msg: #141414;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header */
+        header {
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .back-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+
+        .back-btn:hover {
+            background: var(--bg-hover);
+            color: var(--text-main);
+        }
+
+        h1 {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Main Chat Area */
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            max-width: 800px;
+            margin: 0 auto;
+            width: 100%;
+            padding: 20px;
+            padding-bottom: 200px; /* Space for fixed input */
+        }
+
+        /* Chat Messages */
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .message {
+            max-width: 85%;
+            padding: 16px 20px;
+            border-radius: 16px;
+            line-height: 1.6;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.ai {
+            background: var(--ai-msg);
+            border: 1px solid var(--border);
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+        }
+
+        .message.user {
+            background: var(--user-msg);
+            border: 1px solid var(--border);
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Typing Indicator */
+        .typing {
+            display: none;
+            padding: 16px 20px;
+            background: var(--ai-msg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            border-bottom-left-radius: 4px;
+            max-width: 85%;
+            align-self: flex-start;
+        }
+
+        .typing.active {
+            display: flex;
+            gap: 4px;
+        }
+
+        .typing span {
+            width: 8px;
+            height: 8px;
+            background: var(--text-muted);
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out;
+        }
+
+        .typing span:nth-child(1) { animation-delay: 0s; }
+        .typing span:nth-child(2) { animation-delay: 0.2s; }
+        .typing span:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes bounce {
+            0%, 80%, 100% { transform: translateY(0); }
+            40% { transform: translateY(-8px); }
+        }
+
+        /* Fixed Input Area */
+        .input-area {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to top, var(--bg-dark) 80%, transparent);
+            padding: 40px 20px 20px;
+        }
+
+        .input-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 16px;
+        }
+
+        .input-wrapper {
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+        }
+
+        textarea {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: var(--text-main);
+            font-size: 1rem;
+            resize: none;
+            outline: none;
+            min-height: 24px;
+            max-height: 150px;
+            font-family: inherit;
+            line-height: 1.5;
+        }
+
+        textarea::placeholder {
+            color: var(--text-muted);
+        }
+
+        .send-btn {
+            background: var(--accent);
+            color: #000;
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .send-btn:hover {
+            background: var(--accent-hover);
+            transform: scale(1.05);
+        }
+
+        .send-btn:disabled {
+            background: var(--border);
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .input-hint {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 12px;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+        }
+
+        .generate-btn {
+            background: #6366f1;
+            color: white;
+            border: none;
+            padding: 6px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .generate-btn:hover {
+            background: #4f46e5;
+            transform: scale(1.02);
+        }
+
+        .generate-btn:disabled {
+            background: var(--border);
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Mobile adjustments */
+        @media (max-width: 600px) {
+            main {
+                padding: 16px;
+                padding-bottom: 180px;
+            }
+
+            .message {
+                max-width: 90%;
+                padding: 12px 16px;
+            }
+
+            .input-container {
+                padding: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-left">
+            <button class="back-btn" onclick="goBack()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 12H5M12 19l-7-7 7-7"/>
+                </svg>
+            </button>
+            <h1>Dynamic SOP</h1>
+        </div>
+        <div class="status-dot" title="AI Ready"></div>
+    </header>
+
+    <main>
+        <div class="chat-container" id="chatContainer">
+            <!-- Messages will appear here -->
+        </div>
+
+        <div class="typing" id="typingIndicator">
+            <span></span>
+            <span></span>
+            <span></span>
+        </div>
+    </main>
+
+    <div class="input-area">
+        <div class="input-container">
+            <div class="input-wrapper">
+                <textarea 
+                    id="userInput" 
+                    placeholder="Type your message..." 
+                    rows="1"
+                    oninput="autoResize(this)"
+                    onkeydown="handleKeyDown(event)"
+                ></textarea>
+                <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="input-hint">
+            <button class="generate-btn" id="generateBtn" onclick="generateSOP()">Generate SOP</button>
+            Press Enter to send • Ctrl+Enter for new line
+        </div>
+        </div>
+    </div>
+
+    <script>
+        const chatContainer = document.getElementById('chatContainer');
+        const userInput = document.getElementById('userInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const typingIndicator = document.getElementById('typingIndicator');
+
+        // Initial greeting
+        window.onload = () => {
+            const initialPrompt = sessionStorage.getItem('initialPrompt');
+            if (initialPrompt) {
+                sessionStorage.removeItem('initialPrompt');
+                document.getElementById('userInput').value = initialPrompt;
+                sendMessage();
+            } else {
+                addMessage('ai', 'Share your process notes, then click Generate SOP to produce the final SOP.');
+            }
+        };
+
+        function goBack() {
+            window.location.href = 'landing.html';
+        }
+
+        function autoResize(textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
+        }
+
+        function handleKeyDown(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        }
+
+        function addMessage(type, content) {
+            const div = document.createElement('div');
+            div.className = `message ${type}`;
+            div.innerHTML = `
+                <div class="message-label">${type === 'ai' ? 'AI Assistant' : 'You'}</div>
+                <div class="message-content">${content}</div>
+            `;
+            chatContainer.appendChild(div);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const message = userInput.value.trim();
+            if (!message) return;
+
+            // Add user message
+            addMessage('user', message);
+            userInput.value = '';
+            userInput.style.height = 'auto';
+
+            // Show typing indicator
+            typingIndicator.classList.add('active');
+            chatContainer.appendChild(typingIndicator);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+
+            // Disable send button
+            sendBtn.disabled = true;
+
+            try {
+                // Call the API
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message })
+                });
+
+                const data = await response.json();
+                
+                // Hide typing indicator
+                typingIndicator.classList.remove('active');
+
+                if (data.response) {
+                    addMessage('ai', data.response);
+                } else if (data.error) {
+                    addMessage('ai', 'Sorry, I encountered an error: ' + data.error);
+                } else {
+                    addMessage('ai', 'Sorry, I didn\'t get a response. Please try again.');
+                }
+            } catch (error) {
+                typingIndicator.classList.remove('active');
+                addMessage('ai', 'Sorry, I couldn\'t connect to the server. Please make sure the backend is running.');
+            }
+
+            sendBtn.disabled = false;
+            userInput.focus();
+        }
+
+        // Generate SOP from conversation
+        async function generateSOP() {
+            const generateBtn = document.getElementById('generateBtn');
+            generateBtn.disabled = true;
+            generateBtn.textContent = 'Generating...';
+
+            // Collect all user messages from conversation
+            let allNotes = '';
+            const messages = chatContainer.querySelectorAll('.message.user');
+            messages.forEach(msg => {
+                allNotes += msg.querySelector('.message-content').textContent + '\n\n';
+            });
+
+            if (!allNotes.trim()) {
+                addMessage('ai', 'Please share some process notes first, then I can turn them into an SOP.');
+                generateBtn.disabled = false;
+                generateBtn.textContent = 'Generate SOP';
+                return;
+            }
+
+            addMessage('ai', 'Generating your SOP... This may take a moment.');
+
+            try {
+                const response = await fetch('/api/doc2sop', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ notes: allNotes })
+                });
+
+                const data = await response.json();
+
+                if (data.sop) {
+                    // Remove the "Generating..." message
+                    chatContainer.lastElementChild.remove();
+
+                    // Add the SOP as a special message
+                    const sopDiv = document.createElement('div');
+                    sopDiv.className = 'message ai';
+                    sopDiv.innerHTML = `
+                        <div class="message-label">AI Assistant</div>
+                        <div class="message-content">
+                            <strong>📋 Your SOP is Ready!</strong><br><br>
+                            ${data.sop.replace(/\n/g, '<br>')}
+                            <br><br>
+                            <em>${(typeof data.estimated_cost === 'number') ? `Estimated cost: $${data.estimated_cost.toFixed(4)}` : 'Estimated cost: n/a'}</em>
+                        </div>
+                    `;
+                    chatContainer.appendChild(sopDiv);
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                } else if (data.error) {
+                    addMessage('ai', 'Error generating SOP: ' + data.error);
+                }
+            } catch (error) {
+                addMessage('ai', 'Error: Could not connect to server.');
+            }
+
+            generateBtn.disabled = false;
+            generateBtn.textContent = 'Generate SOP';
+        }
+    </script>
+</body>
+</html>
