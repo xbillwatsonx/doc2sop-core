@@ -20,6 +20,7 @@ EMOJI_RE = re.compile(r"[\U0001F300-\U0001FAFF]", re.UNICODE)
 QUESTION_RE = re.compile(r"\?\s*$")
 NEED_WORD_RE = re.compile(r"\bneed(s|ed)?\b", re.IGNORECASE)
 PURPOSE_SIGNAL_RE = re.compile(r"\b(ensure|protect|prevent|stabilize|improve|control|standardize|safeguard)\b", re.IGNORECASE)
+STEP_LINE_RE = re.compile(r"^(?:\d+\.\s+|[-*\u2022]\s+|\(?[ivx]+\)\s+|step\s+\d+\s*[:.)-])", re.IGNORECASE)
 SCOPE_CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
     "intake": ("customer", "intake", "quote", "quoting", "budget", "spec", "specification", "photo", "text message", "rush", "pricing"),
     "tracking": ("job tracking", "tracking", "whiteboard", "trello", "clipboard", "traveler", "schedule", "lead time", "kanban"),
@@ -172,7 +173,7 @@ def stage3_structure(p: Paths, model: str | None = None, use_llm: bool = False) 
             data = {"llm_error": str(e), "llm_model": model}
     lines = [ln.strip() for ln in src.splitlines() if ln.strip()]
     title = lines[0] if lines else "Document"
-    step_candidates = [ln for ln in lines if re.match(r"^\d+\.\s+", ln)]
+    step_candidates = [ln for ln in lines if STEP_LINE_RE.match(ln)]
     flags = [{"location": ph, "issue": "Placeholder present; requires client-provided value."} for ph in sorted(set(re.findall(r"\[[^\]]+\]", src)))[:50]]
     if not step_candidates:
         flags.append({"location": "document", "issue": "No numbered steps detected; workflow order may need clarification."})
@@ -261,6 +262,7 @@ def _deterministic_draft(src: str) -> str:
     )
     packaging_context = any(term in lower_body for term in ("package", "packaging", "label", "labels", "lids"))
     greenhouse_context = "greenhouse" in lower_body
+    welding_context = any(term in lower_body for term in ("welding", "weld ", "welds", "welders", "fabrication", "metal shop", "metal-shop", "welding shop"))
     if (
         "brain dump" in purpose_text.lower()
         or purpose_text.lower().startswith(("as described", "found in", "located in"))
@@ -270,9 +272,15 @@ def _deterministic_draft(src: str) -> str:
             purpose_text = "Guide the cutting-table harvest workflow for microgreens from staging trays through packaging."
         elif packaging_context:
             purpose_text = "Ensure harvested microgreens move from the cutting area into labeled, food-safe packaging without contamination."
+        elif welding_context:
+            purpose_text = "Keep welding shop intake, quoting, safety, and payment controls consistent from first inquiry through job closeout."
         else:
             purpose_text = "Ensure consistent intake, quoting accuracy, scheduling reliability, safety compliance, and cash-flow control."
+    elif welding_context and "weld" not in purpose_text.lower():
+        purpose_text = purpose_text.rstrip(".") + ". Keep the welding shop's quoting, fabrication prep, and safety routines aligned."
+    scope_fallback_used = False
     if scope_text.lower().startswith("as described") or len(scope_text.strip()) < 40:
+        scope_fallback_used = True
         parts = []
         if any(k in lower_body for k in ("customer inquiry", "intake", "quote", "budget")): parts.append("customer intake and quoting")
         if any(k in lower_body for k in ("job tracking", "lead time", "whiteboard")): parts.append("job tracking and scheduling")
@@ -280,12 +288,19 @@ def _deterministic_draft(src: str) -> str:
         if any(k in lower_body for k in ("payment", "deposit", "cash flow")): parts.append("payment terms and cash-flow controls")
         scope_text = f"Applies to {', '.join(parts)}, from first inquiry through payment and closeout." if parts else "Applies to this operational workflow."
     if scope_text.lower().startswith(("found in", "located in")) or len(scope_text.split()) <= 6:
+        scope_fallback_used = True
         area_parts = []
         if harvest_context: area_parts.append("the cutting-table harvest station")
         if packaging_context: area_parts.append("packaging prep and labeling area")
         if greenhouse_context: area_parts.append("greenhouse trays staged for cutting")
         if not area_parts: area_parts.append("this microgreen harvest workflow")
         scope_text = "Applies to " + ", ".join(area_parts) + "."
+    if welding_context:
+        if scope_fallback_used or "weld" not in scope_text.lower():
+            scope_text = "Applies to welding shop intake, quoting, fabrication prep, safety checks, and payment control from first inquiry through closeout."
+        else:
+            base_scope = scope_text.rstrip(".") or "This workflow"
+            scope_text = base_scope + " within the welding shop and mobile fabrication work."
     md_lines = [f"# {title}", "", "## Purpose", purpose_text, "", "## Scope", scope_text, "", "## Procedure"]
     steps, first_steps, notes, pending = [], [], [], ""
     for i, s in enumerate(sentences):
